@@ -1,0 +1,57 @@
+name: Terraform Multi-Account Pipeline
+
+on:
+  push:
+    paths:
+      - aws-accounts-baseline/**
+      - aws-landing-zone/**
+      - aws-map/accounts.yaml
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout pipeline
+        uses: actions/checkout@v3
+        with:
+          repository: bsnibin/universal-aws
+
+      - name: Checkout landing zone
+        uses: actions/checkout@v3
+        with:
+          repository: bsnibin/aws-landing-zone
+          path: aws-landing-zone
+
+      - name: Checkout baselines
+        uses: actions/checkout@v3
+        with:
+          repository: bsnibin/aws-accounts-baseline
+          path: aws-accounts-baseline
+
+      - name: Checkout mapping
+        uses: actions/checkout@v3
+        with:
+          repository: bsnibin/aws-map
+          path: aws-map
+
+      - name: Set up prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq yq
+          curl -Lo terraform.zip https://releases.hashicorp.com/terraform/1.5.0/terraform_1.5.0_linux_amd64.zip
+          unzip terraform.zip
+          sudo mv terraform /usr/local/bin/
+
+      - name: Deploy to all accounts
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.TERRAFORM_SVC_AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.TERRAFORM_SVC_AWS_SECRET_ACCESS_KEY }}
+          AWS_SESSION_TOKEN: ${{ secrets.TERRAFORM_SVC_AWS_SESSION_TOKEN }}
+        run: |
+          for account in $(yq 'keys | .[]' aws-map/accounts.yaml); do
+            id=$(yq ".\"$account\".id" aws-map/accounts.yaml)
+            role=$(yq ".\"$account\".assume_role" aws-map/accounts.yaml)
+            tfvars="aws-accounts-baseline/$account/terraform.tfvars"
+            bash scripts/assume_and_apply.sh "$account" "$id" "$role" "$tfvars" "aws-landing-zone/baseline"
+            # Repeat for platform modules as needed
+          done
