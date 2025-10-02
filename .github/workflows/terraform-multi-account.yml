@@ -48,10 +48,11 @@ jobs:
           AWS_SECRET_ACCESS_KEY: ${{ secrets.TERRAFORM_SVC_AWS_SECRET_ACCESS_KEY }}
           AWS_SESSION_TOKEN: ${{ secrets.TERRAFORM_SVC_AWS_SESSION_TOKEN }}
         run: |
-          for account in $(yq 'keys | .[]' aws-map/accounts.yaml); do
-            id=$(yq ".\"$account\".id" aws-map/accounts.yaml)
-            role=$(yq ".\"$account\".assume_role" aws-map/accounts.yaml)
-            tfvars="aws-accounts-baseline/$account/terraform.tfvars"
-            bash scripts/assume_and_apply.sh "$account" "$id" "$role" "$tfvars" "aws-landing-zone/baseline"
-            # Repeat for platform modules as needed
+          for tfvars in aws-accounts-baseline/*/terraform.tfvars; do
+            account_id=$(grep '^account_id' "$tfvars" | awk -F'=' '{print $2}' | tr -d ' "')
+            assume_role_arn="arn:aws:iam::${account_id}:role/tlz-avm-automation"
+            echo "Processing $tfvars"
+            echo "Account ID: $account_id"
+            echo "Assume Role ARN: $assume_role_arn"
+            # Now use $assume_role_arn with aws sts assume-role, etc.
           done
